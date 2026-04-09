@@ -7,12 +7,12 @@ from indic_transliteration import sanscript
 from indic_transliteration.sanscript import transliterate
 
 # -------------------------
-# INIT APP (FIRST ALWAYS)
+# INIT APP
 # -------------------------
 app = FastAPI()
 
 # -------------------------
-# LOAD DATA (SAFE + STABLE)
+# LOAD DATA
 # -------------------------
 DATA_URL = "https://drive.google.com/uc?export=download&id=1tfYsu-wHTUANOIT9pc_NYlQQiytlE01U"
 
@@ -27,14 +27,12 @@ def load_data():
             DATABASE = response.json()
             print(f"✅ Loaded {len(DATABASE)} records")
         else:
-            print("❌ Failed to fetch data:", response.status_code)
+            print("❌ Failed to fetch data")
 
     except Exception as e:
         print("❌ Error loading data:", e)
 
-# Load once at startup
 load_data()
-
 
 # -------------------------
 # SERVE FRONTEND
@@ -46,9 +44,8 @@ def home():
     with open("index.html") as f:
         return f.read()
 
-
 # -------------------------
-# NORMALIZATION (CRITICAL)
+# NORMALIZATION
 # -------------------------
 def normalize(text):
     if not text:
@@ -56,7 +53,6 @@ def normalize(text):
 
     text = text.strip()
 
-    # Try Marathi → English
     try:
         text = transliterate(text, sanscript.DEVANAGARI, sanscript.ITRANS)
     except:
@@ -64,30 +60,34 @@ def normalize(text):
 
     return text.lower()
 
+# -------------------------
+# NORMALIZE TOKENS (IMPORTANT FIX)
+# -------------------------
+def normalize_tokens(tokens):
+    normalized = []
+    for t in tokens:
+        try:
+            t = transliterate(t, sanscript.DEVANAGARI, sanscript.ITRANS)
+        except:
+            pass
+        normalized.append(t.lower())
+    return normalized
 
 # -------------------------
-# MATCH SCORING (SAFE)
+# MATCH FUNCTION
 # -------------------------
 def get_match_score(query, tokens):
-    best_score = 0
+    best = 0
 
     for t in tokens:
-        t = t.lower()
-
-        # Exact match
         if query == t:
             return 3
-
-        # Partial match
-        if query in t:
-            best_score = max(best_score, 2)
-
-        # Fuzzy match
+        elif query in t:
+            best = max(best, 2)
         elif fuzz.ratio(query, t) > 85:
-            best_score = max(best_score, 1)
+            best = max(best, 1)
 
-    return best_score
-
+    return best
 
 # -------------------------
 # SEARCH API
@@ -106,16 +106,19 @@ def search_api(
     house_no = house_no.strip()
     age = age.strip()
 
-    # ❗ Prevent empty search returning everything
+    # Prevent empty search
     if not (surname or firstname or house_no or age):
         return {"results": []}
 
     for record in DATABASE:
-        tokens = record.get("search_tokens", [])
+
+        raw_tokens = record.get("search_tokens", [])
+        tokens = normalize_tokens(raw_tokens)
+
         score = 0
 
         # -------------------------
-        # NAME MATCHING (SMART)
+        # SURNAME
         # -------------------------
         if surname:
             s_score = get_match_score(surname, tokens)
@@ -123,6 +126,9 @@ def search_api(
                 continue
             score += s_score
 
+        # -------------------------
+        # FIRST NAME
+        # -------------------------
         if firstname:
             f_score = get_match_score(firstname, tokens)
             if f_score == 0:
@@ -130,13 +136,16 @@ def search_api(
             score += f_score
 
         # -------------------------
-        # STRICT FILTERS
+        # HOUSE
         # -------------------------
         if house_no:
             if record.get("house_no") != house_no:
                 continue
             score += 2
 
+        # -------------------------
+        # AGE
+        # -------------------------
         if age:
             if str(record.get("age")) != age:
                 continue
@@ -144,9 +153,7 @@ def search_api(
 
         results.append((score, record))
 
-    # -------------------------
-    # SORT BEST FIRST
-    # -------------------------
+    # Sort best first
     results.sort(key=lambda x: x[0], reverse=True)
 
     return {"results": [r[1] for r in results]}
