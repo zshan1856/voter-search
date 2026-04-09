@@ -7,12 +7,12 @@ from indic_transliteration import sanscript
 from indic_transliteration.sanscript import transliterate
 
 # -------------------------
-# INIT APP
+# INIT APP (FIRST)
 # -------------------------
 app = FastAPI()
 
 # -------------------------
-# LOAD DATA
+# LOAD DATA (SAFE)
 # -------------------------
 DATA_URL = "https://drive.google.com/uc?export=download&id=1tfYsu-wHTUANOIT9pc_NYlQQiytlE01U"
 
@@ -21,18 +21,18 @@ DATABASE = []
 def load_data():
     global DATABASE
     try:
-        response = requests.get(DATA_URL, timeout=20)
-
-        if response.status_code == 200:
-            DATABASE = response.json()
+        res = requests.get(DATA_URL, timeout=20)
+        if res.status_code == 200:
+            DATABASE = res.json()
             print(f"✅ Loaded {len(DATABASE)} records")
         else:
-            print("❌ Failed to fetch data")
-
+            print("❌ Failed to fetch data:", res.status_code)
     except Exception as e:
         print("❌ Error loading data:", e)
 
+# load once at startup
 load_data()
+
 
 # -------------------------
 # SERVE FRONTEND
@@ -44,6 +44,7 @@ def home():
     with open("index.html") as f:
         return f.read()
 
+
 # -------------------------
 # NORMALIZATION
 # -------------------------
@@ -53,6 +54,7 @@ def normalize(text):
 
     text = text.strip()
 
+    # Marathi → English (phonetic)
     try:
         text = transliterate(text, sanscript.DEVANAGARI, sanscript.ITRANS)
     except:
@@ -60,37 +62,42 @@ def normalize(text):
 
     return text.lower()
 
-# -------------------------
-# NORMALIZE TOKENS (IMPORTANT FIX)
-# -------------------------
+
 def normalize_tokens(tokens):
-    normalized = []
+    out = []
     for t in tokens:
         try:
             t = transliterate(t, sanscript.DEVANAGARI, sanscript.ITRANS)
         except:
             pass
-        normalized.append(t.lower())
-    return normalized
+        out.append(t.lower())
+    return out
+
 
 # -------------------------
-# MATCH FUNCTION
+# MATCH SCORING
 # -------------------------
 def get_match_score(query, tokens):
     best = 0
 
     for t in tokens:
+        # exact
         if query == t:
             return 3
-        elif query in t:
+
+        # partial
+        if query in t:
             best = max(best, 2)
+
+        # fuzzy
         elif fuzz.ratio(query, t) > 85:
             best = max(best, 1)
 
     return best
 
+
 # -------------------------
-# SEARCH API
+# SEARCH API (2-STAGE)
 # -------------------------
 @app.get("/search")
 def search_api(
@@ -106,54 +113,63 @@ def search_api(
     house_no = house_no.strip()
     age = age.strip()
 
-    # Prevent empty search
-    if not (surname or firstname or house_no or age):
+    # ❗ Stage 0: no search input → return nothing
+    if not (surname or firstname):
         return {"results": []}
 
     for record in DATABASE:
 
-        raw_tokens = record.get("search_tokens", [])
-        tokens = normalize_tokens(raw_tokens)
+        tokens = normalize_tokens(record.get("search_tokens", []))
 
-        score = 0
+        surname_score = 0
+        firstname_score = 0
 
         # -------------------------
-        # SURNAME
+        # STAGE 1: SEARCH (NAME)
         # -------------------------
         if surname:
-            s_score = get_match_score(surname, tokens)
-            if s_score == 0:
-                continue
-            score += s_score
+            surname_score = get_match_score(surname, tokens)
 
-        # -------------------------
-        # FIRST NAME
-        # -------------------------
         if firstname:
-            f_score = get_match_score(firstname, tokens)
-            if f_score == 0:
+            firstname_score = get_match_score(firstname, tokens)
+
+        # matching logic
+        if surname and firstname:
+            if surname_score == 0 and firstname_score == 0:
                 continue
-            score += f_score
+        elif surname:
+            if surname_score == 0:
+                continue
+        elif firstname:
+            if firstname_score == 0:
+                continue
 
         # -------------------------
-        # HOUSE
+        # SCORING
+        # -------------------------
+        score = surname_score + firstname_score
+
+        # boost if BOTH match
+        if surname_score > 0 and firstname_score > 0:
+            score += 5
+
+        # -------------------------
+        # STAGE 2: FILTER
         # -------------------------
         if house_no:
             if record.get("house_no") != house_no:
                 continue
-            score += 2
 
-        # -------------------------
-        # AGE
-        # -------------------------
         if age:
             if str(record.get("age")) != age:
                 continue
-            score += 2
 
         results.append((score, record))
 
-    # Sort best first
+    # -------------------------
+    # SORT
+    # -------------------------
     results.sort(key=lambda x: x[0], reverse=True)
 
+    # include relative_name in response (already present in record)
     return {"results": [r[1] for r in results]}
