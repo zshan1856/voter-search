@@ -103,4 +103,4 @@ def search_api(
 
     results.sort(key=lambda x: x[0], reverse=True)
 
-    return {"results": [r[1] for r in results[:20]]}
+    return {"results": [r[1] for r in results]}
