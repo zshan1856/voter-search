@@ -1,47 +1,70 @@
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
 import json
 from rapidfuzz import fuzz
+from indic_transliteration import sanscript
+from indic_transliteration.sanscript import transliterate
 
 app = FastAPI()
 
 # Load data
-import requests
+with open("voter_data.json", "r") as f:
+    DATABASE = json.load(f)
 
-DATA_URL = "https://drive.google.com/uc?id=1tfYsu-wHTUANOIT9pc_NYlQQiytlE01U"
+# -------------------------
+# Normalization (IMPORTANT)
+# -------------------------
+def normalize(text):
+    try:
+        text = transliterate(text, sanscript.DEVANAGARI, sanscript.ITRANS)
+    except:
+        pass
+    return text.lower()
 
-response = requests.get(DATA_URL)
-DATABASE = response.json()
-
-# Serve HTML
-app.mount("/static", StaticFiles(directory="."), name="static")
-
-@app.get("/", response_class=HTMLResponse)
-def home():
-    with open("index.html") as f:
-        return f.read()
-
-# Search logic
-def search(query, database):
-    query = query.lower()
+# -------------------------
+# Search API
+# -------------------------
+@app.get("/search")
+def search_api(
+    surname: str = "",
+    firstname: str = "",
+    house_no: str = "",
+    age: str = ""
+):
     results = []
 
-    for record in database:
+    surname = normalize(surname)
+    firstname = normalize(firstname)
+
+    for record in DATABASE:
         score = 0
 
-        for token in record["search_tokens"]:
-            if query in token:
+        tokens = record["search_tokens"]
+
+        # 🔍 Name matching
+        for t in tokens:
+            if surname and surname in t:
                 score += 2
-            elif fuzz.ratio(query, token) > 85:
+            elif surname and fuzz.ratio(surname, t) > 85:
                 score += 1
 
-        if score > 0:
+            if firstname and firstname in t:
+                score += 2
+            elif firstname and fuzz.ratio(firstname, t) > 85:
+                score += 1
+
+        # 🏠 House filter (exact match)
+        if house_no:
+            if record["house_no"] != house_no:
+                continue
+
+        # 🎂 Age filter
+        if age:
+            if record["age"] != age:
+                continue
+
+        if score > 0 or house_no or age:
             results.append((score, record))
 
     results.sort(key=lambda x: x[0], reverse=True)
-    return [r[1] for r in results[:20]]
 
-@app.get("/search")
-def search_api(q: str):
-    return {"results": search(q, DATABASE)}
+    return {"results": [r[1] for r in results[:20]]}
