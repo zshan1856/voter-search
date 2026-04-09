@@ -7,16 +7,25 @@
 
 <h2>Search Voter</h2>
 
-<input type="text" id="query" placeholder="Enter name">
+<input type="text" id="surname" placeholder="Surname"><br><br>
+<input type="text" id="firstname" placeholder="First Name"><br><br>
+<input type="text" id="house" placeholder="House No"><br><br>
+<input type="text" id="age" placeholder="Age"><br><br>
+
 <button onclick="search()">Search</button>
 
 <ul id="results"></ul>
 
 <script>
 async function search() {
-    let q = document.getElementById("query").value;
+    let surname = document.getElementById("surname").value;
+    let firstname = document.getElementById("firstname").value;
+    let house = document.getElementById("house").value;
+    let age = document.getElementById("age").value;
 
-    let res = await fetch(`/search?q=${q}`);
+    let url = `/search?surname=${surname}&firstname=${firstname}&house_no=${house}&age=${age}`;
+
+    let res = await fetch(url);
     let data = await res.json();
 
     let list = document.getElementById("results");
@@ -24,7 +33,7 @@ async function search() {
 
     data.results.forEach(r => {
         let li = document.createElement("li");
-        li.innerText = `${r.name} | House: ${r.house_no} | File: ${r.source_file}`;
+        li.innerText = `${r.name} | House: ${r.house_no} | Age: ${r.age} | File: ${r.source_file}`;
         list.appendChild(li);
     });
 }
