@@ -2,41 +2,119 @@
 <html>
 <head>
   <title>Voter Search</title>
+  <style>
+    body {
+      font-family: Arial;
+      max-width: 800px;
+      margin: auto;
+      padding: 20px;
+    }
+
+    input {
+      width: 100%;
+      padding: 8px;
+      margin: 5px 0;
+    }
+
+    button {
+      padding: 10px;
+      margin-top: 10px;
+      cursor: pointer;
+    }
+
+    .result {
+      border-bottom: 1px solid #ccc;
+      padding: 10px 0;
+    }
+
+    .highlight {
+      background-color: yellow;
+      font-weight: bold;
+    }
+  </style>
 </head>
+
 <body>
 
-<h2>Search Voter</h2>
+<h2>Kausa Mumbra 2002 Voter Search</h2>
 
-<input type="text" id="surname" placeholder="Surname"><br><br>
-<input type="text" id="firstname" placeholder="First Name"><br><br>
-<input type="text" id="house" placeholder="House No"><br><br>
-<input type="text" id="age" placeholder="Age"><br><br>
+<a href="https://drive.google.com/uc?export=download&id=1qwCIJ4ERVkUSm_k0-4hk-92eHRWSV5Tg" target="_blank">
+  <button>Download Full Voter List (PDF)</button>
+</a>
+
+<br><br>
+
+<input id="surname" placeholder="Surname (e.g. Shaikh / शेख)">
+<input id="firstname" placeholder="First Name (e.g. Dawood / दाऊद)">
+<input id="house" placeholder="House No (e.g. 04)">
+<input id="age" placeholder="Age (e.g. 25)">
 
 <button onclick="search()">Search</button>
 
-<ul id="results"></ul>
+<p id="status"></p>
+
+<div id="results"></div>
 
 <script>
+
+function highlight(text, query) {
+    if (!query) return text;
+
+    let regex = new RegExp(`(${query})`, "gi");
+    return text.replace(regex, '<span class="highlight">$1</span>');
+}
+
 async function search() {
-    let surname = document.getElementById("surname").value;
-    let firstname = document.getElementById("firstname").value;
-    let house = document.getElementById("house").value;
-    let age = document.getElementById("age").value;
+
+    let surname = document.getElementById("surname").value.trim();
+    let firstname = document.getElementById("firstname").value.trim();
+    let house = document.getElementById("house").value.trim();
+    let age = document.getElementById("age").value.trim();
+
+    let status = document.getElementById("status");
+    let resultsDiv = document.getElementById("results");
+
+    // 🟡 Loading state
+    status.innerText = "Searching...";
+    resultsDiv.innerHTML = "";
 
     let url = `/search?surname=${surname}&firstname=${firstname}&house_no=${house}&age=${age}`;
 
-    let res = await fetch(url);
-    let data = await res.json();
+    try {
+        let res = await fetch(url);
+        let data = await res.json();
 
-    let list = document.getElementById("results");
-    list.innerHTML = "";
+        // 🔢 Result count
+        status.innerText = `Found ${data.results.length} results`;
 
-    data.results.forEach(r => {
-        let li = document.createElement("li");
-        li.innerText = `${r.name} | House: ${r.house_no} | Age: ${r.age} | File: ${r.source_file}`;
-        list.appendChild(li);
-    });
+        if (data.results.length === 0) {
+            resultsDiv.innerHTML = "No results found";
+            return;
+        }
+
+        data.results.forEach(r => {
+
+            let div = document.createElement("div");
+            div.className = "result";
+
+            let name = r.name;
+            let highlightedName = highlight(name, surname) + " " + highlight(name, firstname);
+
+            div.innerHTML = `
+                <b>${highlightedName}</b><br>
+                House: ${r.house_no} | Age: ${r.age || "N/A"}<br>
+                File: ${r.source_file}
+            `;
+
+            resultsDiv.appendChild(div);
+        });
+
+    } catch (err) {
+        status.innerText = "Error fetching results";
+        console.error(err);
+    }
 }
+
 </script>
 
 </body>
