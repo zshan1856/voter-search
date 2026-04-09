@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Voter Search</title>
+</head>
+<body>
+
+<h2>Search Voter</h2>
+
+<input type="text" id="query" placeholder="Enter name">
+<button onclick="search()">Search</button>
+
+<ul id="results"></ul>
+
+<script>
+async function search() {
+    let q = document.getElementById("query").value;
+
+    let res = await fetch(`/search?q=${q}`);
+    let data = await res.json();
+
+    let list = document.getElementById("results");
+    list.innerHTML = "";
+
+    data.results.forEach(r => {
+        let li = document.createElement("li");
+        li.innerText = `${r.name} | House: ${r.house_no} | File: ${r.source_file}`;
+        list.appendChild(li);
+    });
+}
+</script>
+
+</body>
+</html>
