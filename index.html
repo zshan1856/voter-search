@@ -98,7 +98,10 @@ async function search() {
             div.className = "result";
 
             let name = r.name;
-            let highlightedName = highlight(name, surname) + " " + highlight(name, firstname);
+            let highlightedName = name;
+
+            if (surname) highlightedName = highlight(highlightedName, surname);
+            if (firstname) highlightedName = highlight(highlightedName, firstname);
 
             div.innerHTML = `
                 <b>${highlightedName}</b><br>
