@@ -68,7 +68,7 @@ def home():
 
 
 # -------------------------
-# SEARCH
+# SEARCH (WITH RANKING)
 # -------------------------
 @app.get("/search")
 def search_api(surname: str = "", firstname: str = ""):
@@ -79,8 +79,8 @@ def search_api(surname: str = "", firstname: str = ""):
     if not surname and not firstname:
         return {"results": []}
 
-    strong = []
-    partial = []
+    strong = []   # both match
+    medium = []   # one match
 
     for r in DATABASE:
 
@@ -94,16 +94,14 @@ def search_api(surname: str = "", firstname: str = ""):
             if close_match(surname, tokens[0]):
                 s_match = True
 
-        # FIRST NAME
+        # FIRSTNAME
         if firstname:
             for t in tokens[1:]:
                 if close_match(firstname, t):
                     f_match = True
                     break
 
-        # -------------------------
         # LOGIC
-        # -------------------------
         if surname and not firstname:
             if s_match:
                 strong.append(r)
@@ -114,8 +112,8 @@ def search_api(surname: str = "", firstname: str = ""):
 
         else:
             if s_match and f_match:
-                strong.append(r)   # best
+                strong.append(r)   # 🔥 top results
             elif s_match or f_match:
-                partial.append(r)  # fallback
+                medium.append(r)   # 🔽 lower
 
-    return {"results": strong + partial}
+    return {"results": strong + medium}
