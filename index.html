@@ -90,7 +90,7 @@
 
 <button class="search-btn" id="searchBtn" onclick="search()">Search</button>
 <button class="cancel-btn" onclick="cancelSearch()">Cancel</button>
-<button class="filter-btn" onclick="toggleFilter()">Filters</button>
+<button class="filter-btn" id="filterBtn" onclick="toggleFilter()" style="display:none;">Filters</button>
 
 <p id="status"></p>
 <p id="loader">🔍 Searching...</p>
@@ -111,13 +111,19 @@
 let controller;
 let originalResults = [];
 
-// ✅ safer highlight (handles special characters)
+// ✅ escape regex safely
+function escapeRegex(text) {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// ✅ fixed highlight
 function highlight(text, q) {
     if (!q) return text;
 
     try {
-        let regex = new RegExp(`(${q})`, "gi");
-        return text.replace(regex, '<span class="highlight">$1</span>');
+        let safe = escapeRegex(q.trim());
+        let regex = new RegExp(safe, "gi");
+        return text.replace(regex, match => `<span class="highlight">${match}</span>`);
     } catch {
         return text;
     }
@@ -125,40 +131,46 @@ function highlight(text, q) {
 
 async function search() {
 
-    // reset filters
+    // RESET UI STATE
     document.getElementById("filterBox").style.display = "none";
+    document.getElementById("filterBtn").style.display = "none";
     document.getElementById("houseFilter").value = "";
     document.getElementById("ageFilter").value = "";
+    document.getElementById("status").innerText = "";
 
-    let surname = document.getElementById("surname").value;
-    let firstname = document.getElementById("firstname").value;
+    let surname = document.getElementById("surname").value.trim();
+    let firstname = document.getElementById("firstname").value.trim();
 
     document.getElementById("searchBtn").disabled = true;
     document.getElementById("loader").style.display = "block";
-    document.getElementById("status").innerText = "";
 
     controller = new AbortController();
 
-    let res = await fetch(`/search?surname=${encodeURIComponent(surname)}&firstname=${encodeURIComponent(firstname)}`, {
-        signal: controller.signal
-    });
+    try {
+        let res = await fetch(`/search?surname=${encodeURIComponent(surname)}&firstname=${encodeURIComponent(firstname)}`, {
+            signal: controller.signal
+        });
 
-    let data = await res.json();
+        let data = await res.json();
 
-    originalResults = data.results;
+        originalResults = data.results || [];
+
+        // ✅ RESULT COUNT
+        document.getElementById("status").innerText = `Found ${originalResults.length} results`;
+
+        // ✅ SHOW FILTER ONLY IF RESULTS
+        if (originalResults.length > 0) {
+            document.getElementById("filterBtn").style.display = "inline-block";
+        }
+
+        render(originalResults);
+
+    } catch (e) {
+        console.log("Search cancelled or failed");
+    }
 
     document.getElementById("searchBtn").disabled = false;
     document.getElementById("loader").style.display = "none";
-
-    // ✅ result count
-    document.getElementById("status").innerText = `Found ${originalResults.length} results`;
-
-    // ✅ show filter only if results exist
-    if (originalResults.length > 0) {
-        document.getElementById("filterBox").style.display = "block";
-    }
-
-    render(originalResults);
 }
 
 function cancelSearch() {
@@ -170,14 +182,14 @@ function render(data) {
     let resultsDiv = document.getElementById("results");
     resultsDiv.innerHTML = "";
 
-    let surname = document.getElementById("surname").value;
-    let firstname = document.getElementById("firstname").value;
+    let surname = document.getElementById("surname").value.trim();
+    let firstname = document.getElementById("firstname").value.trim();
 
     data.forEach(r => {
 
-        let name = r.name;
+        let name = r.name || "";
 
-        // ✅ highlight both inputs
+        // ✅ APPLY BOTH HIGHLIGHTS
         name = highlight(name, surname);
         name = highlight(name, firstname);
 
@@ -197,25 +209,26 @@ function render(data) {
 }
 
 function toggleFilter() {
-    let box = document.getElementById("filterBox");
 
-    // ❗ prevent opening filter if no results
+    // ❗ only allow if results exist
     if (originalResults.length === 0) return;
+
+    let box = document.getElementById("filterBox");
 
     box.style.display = box.style.display === "none" ? "block" : "none";
 }
 
 function applyFilter() {
 
-    let house = document.getElementById("houseFilter").value;
-    let age = document.getElementById("ageFilter").value;
+    let house = document.getElementById("houseFilter").value.trim();
+    let age = document.getElementById("ageFilter").value.trim();
 
     let filtered = originalResults;
 
     if (house) filtered = filtered.filter(r => r.house_no == house);
     if (age) filtered = filtered.filter(r => r.age == age);
 
-    // ✅ update count after filter
+    // ✅ UPDATE COUNT
     document.getElementById("status").innerText = `Filtered: ${filtered.length} results`;
 
     render(filtered);
