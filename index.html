@@ -5,59 +5,57 @@
 
   <style>
     body {
-      font-family: -apple-system, BlinkMacSystemFont;
+      font-family: Arial;
       max-width: 700px;
       margin: auto;
       padding: 20px;
       background: #fafafa;
     }
 
-    h2 {
-      margin-bottom: 5px;
-    }
-
     input {
       width: 100%;
       padding: 10px;
       margin: 6px 0;
-      border: 1px solid #ddd;
       border-radius: 6px;
+      border: 1px solid #ddd;
     }
 
     button {
       padding: 10px;
-      border: none;
-      background: black;
-      color: white;
       border-radius: 6px;
+      border: none;
       cursor: pointer;
     }
 
+    .search-btn { background: black; color: white; }
+
+    .filter-btn { background: #1976d2; color: white; }
+
+    .clear-btn { background: #e53935; color: white; }
+
     .result {
       background: white;
-      margin-top: 10px;
       padding: 12px;
+      margin-top: 10px;
       border-radius: 8px;
       border: 1px solid #eee;
     }
 
-    #status {
-      margin-top: 10px;
-      color: gray;
-    }
+    .highlight-name { background: yellow; }
+    .highlight-filter { background: #80deea; }
 
     .filter-box {
       display: none;
-      background: #fff;
-      padding: 10px;
       margin-top: 10px;
+      padding: 10px;
+      background: white;
       border-radius: 8px;
       border: 1px solid #ddd;
     }
 
-    .filter-btn {
-      margin-top: 10px;
-      background: #555;
+    .active-filter {
+      margin-top: 5px;
+      color: green;
     }
   </style>
 </head>
@@ -66,117 +64,93 @@
 
 <h2>Kausa Mumbra 2002 Voter Search</h2>
 
-<a href="https://drive.google.com/uc?export=download&id=1qwCIJ4ERVkUSm_k0-4hk-92eHRWSV5Tg" target="_blank">
-  <button>Download Full Voter List (PDF)</button>
-</a>
+<input id="surname" placeholder="Surname">
+<input id="firstname" placeholder="First Name">
 
-<br><br>
-
-<!-- SEARCH INPUT -->
-<input id="surname" placeholder="Surname (Shaikh / शेख)">
-<input id="firstname" placeholder="First Name (Dawood / दाऊद)">
-
-<button onclick="search()">Search</button>
+<button class="search-btn" onclick="search()">Search</button>
 
 <p id="status"></p>
 
-<!-- FILTER BUTTON -->
-<button class="filter-btn" onclick="toggleFilter()" id="filterBtn" style="display:none;">
-  ⚙️ Filters
-</button>
+<button id="filterBtn" class="filter-btn" style="display:none;" onclick="toggleFilter()">Filters</button>
 
-<!-- FILTER PANEL -->
-<div class="filter-box" id="filterBox">
+<div id="filterBox" class="filter-box">
   <input id="houseFilter" placeholder="House No">
   <input id="ageFilter" placeholder="Age">
+
   <button onclick="applyFilter()">Apply Filter</button>
+  <button class="clear-btn" onclick="clearFilter()">Clear Filter</button>
+
+  <div id="activeFilters" class="active-filter"></div>
 </div>
 
-<!-- RESULTS -->
 <div id="results"></div>
 
 <script>
+let originalResults = [];
 
-let originalResults = []; // store search results
-
-function toggleFilter() {
-    let box = document.getElementById("filterBox");
-    box.style.display = box.style.display === "none" ? "block" : "none";
+function highlight(text, query) {
+    if (!query) return text;
+    let regex = new RegExp(`(${query})`, "gi");
+    return text.replace(regex, '<span class="highlight-name">$1</span>');
 }
 
-// -------------------------
-// SEARCH
-// -------------------------
 async function search() {
+
+    // reset filter UI
+    document.getElementById("filterBox").style.display = "none";
+    document.getElementById("activeFilters").innerText = "";
 
     let surname = document.getElementById("surname").value.trim();
     let firstname = document.getElementById("firstname").value.trim();
 
-    let status = document.getElementById("status");
-    let resultsDiv = document.getElementById("results");
+    let res = await fetch(`/search?surname=${encodeURIComponent(surname)}&firstname=${encodeURIComponent(firstname)}`);
+    let data = await res.json();
 
-    status.innerText = "Searching...";
-    resultsDiv.innerHTML = "";
+    originalResults = data.results;
 
-    let url = `/search?surname=${encodeURIComponent(surname)}&firstname=${encodeURIComponent(firstname)}`;
+    document.getElementById("filterBtn").style.display = "block";
 
-    try {
-        let res = await fetch(url);
-        let data = await res.json();
-
-        originalResults = data.results || [];
-
-        // show filter button only after results
-        document.getElementById("filterBtn").style.display = "block";
-
-        renderResults(originalResults);
-
-    } catch (err) {
-        console.error(err);
-        status.innerText = "Error fetching results";
-    }
+    render(originalResults);
 }
 
-// -------------------------
-// RENDER RESULTS
-// -------------------------
-function renderResults(data) {
+function render(data) {
 
-    let status = document.getElementById("status");
     let resultsDiv = document.getElementById("results");
+    let status = document.getElementById("status");
 
     status.innerText = `Found ${data.length} results`;
-
-    if (data.length === 0) {
-        resultsDiv.innerHTML = "No results found";
-        return;
-    }
 
     resultsDiv.innerHTML = "";
 
     data.forEach(r => {
 
+        let name = r.name;
+
+        name = highlight(name, document.getElementById("surname").value);
+        name = highlight(name, document.getElementById("firstname").value);
+
         let div = document.createElement("div");
         div.className = "result";
 
         div.innerHTML = `
-            <b>${r.name}</b><br>
+            <b>${name}</b><br>
             Relative: ${r.relative_name || "N/A"}<br>
-            House: ${r.house_no} | Age: ${r.age || "N/A"}<br>
-            File: ${r.source_file}
+            House: ${r.house_no} | Age: ${r.age}
         `;
 
         resultsDiv.appendChild(div);
     });
 }
 
-// -------------------------
-// APPLY FILTER (CLIENT SIDE)
-// -------------------------
+function toggleFilter() {
+    let box = document.getElementById("filterBox");
+    box.style.display = box.style.display === "none" ? "block" : "none";
+}
+
 function applyFilter() {
 
-    let house = document.getElementById("houseFilter").value.trim();
-    let age = document.getElementById("ageFilter").value.trim();
+    let house = document.getElementById("houseFilter").value;
+    let age = document.getElementById("ageFilter").value;
 
     let filtered = originalResults;
 
@@ -188,9 +162,18 @@ function applyFilter() {
         filtered = filtered.filter(r => String(r.age) === age);
     }
 
-    renderResults(filtered);
+    document.getElementById("activeFilters").innerText =
+        `Filters: ${house ? "House=" + house : ""} ${age ? " Age=" + age : ""}`;
+
+    render(filtered);
 }
 
+function clearFilter() {
+    document.getElementById("houseFilter").value = "";
+    document.getElementById("ageFilter").value = "";
+    document.getElementById("activeFilters").innerText = "";
+    render(originalResults);
+}
 </script>
 
 </body>
