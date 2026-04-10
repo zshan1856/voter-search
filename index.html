@@ -7,7 +7,7 @@
     body {
       font-family: -apple-system, BlinkMacSystemFont;
       margin: 0;
-      background: #f5f5f5;
+      background: #f7f7f7;
     }
 
     .header {
@@ -20,73 +20,96 @@
     }
 
     input {
-      width: 48%;
+      width: 100%;
       padding: 10px;
-      margin: 5px 1%;
+      margin: 5px 0;
       border-radius: 8px;
       border: 1px solid #ddd;
     }
 
-    .btn {
+    button {
       padding: 10px;
+      margin-top: 5px;
+      cursor: pointer;
       border-radius: 8px;
       border: none;
-      cursor: pointer;
     }
 
     .search-btn { background: black; color: white; }
+    .cancel-btn { background: red; color: white; }
     .filter-btn { background: #1976d2; color: white; }
 
-    .results {
-      padding: 15px;
-      height: calc(100vh - 140px);
-      overflow-y: auto;
+    .container {
+      max-width: 700px;
+      margin: auto;
     }
 
-    .card {
+    .results {
+      height: calc(100vh - 200px);
+      overflow-y: auto;
+      padding: 10px;
+    }
+
+    .result {
       background: white;
       padding: 12px;
-      margin-bottom: 10px;
       border-radius: 10px;
+      margin-bottom: 10px;
+      border: 1px solid #eee;
     }
 
     .highlight {
       background: #ffe082;
     }
 
+    #loader { display:none; }
+
     .filter-box {
-      display: none;
-      margin-top: 10px;
+      display:none;
+      margin-top:10px;
+      padding:10px;
+      background:#fafafa;
+      border-radius:8px;
+      border:1px solid #ddd;
     }
   </style>
 </head>
 
 <body>
 
-<div class="header">
+<div class="header container">
 
-  <h3>Kausa Mumbra 2002 Voter</h3>
+<h2>Kausa Mumbra 2002 Voter Search</h2>
 
-  <input id="surname" placeholder="Surname">
-  <input id="firstname" placeholder="First Name">
+<a href="https://drive.google.com/uc?export=download&id=1qwCIJ4ERVkUSm_k0-4hk-92eHRWSV5Tg" target="_blank">
+  <button>Download Full Voter List (PDF)</button>
+</a>
 
-  <button class="btn search-btn" onclick="search()">Search</button>
-  <button class="btn filter-btn" onclick="toggleFilter()">Filters</button>
+<input id="surname" placeholder="Surname">
+<input id="firstname" placeholder="First Name">
 
-  <div class="filter-box" id="filterBox">
-    <input id="house" placeholder="House No">
-    <input id="age" placeholder="Age">
-    <button onclick="applyFilter()">Apply</button>
-    <button onclick="clearFilter()">Clear</button>
-  </div>
+<button class="search-btn" id="searchBtn" onclick="search()">Search</button>
+<button class="cancel-btn" onclick="cancelSearch()">Cancel</button>
+<button class="filter-btn" onclick="toggleFilter()">Filters</button>
+
+<p id="status"></p>
+<p id="loader">🔍 Searching...</p>
+
+<div class="filter-box" id="filterBox">
+  <input id="houseFilter" placeholder="House No">
+  <input id="ageFilter" placeholder="Age">
+  <button onclick="applyFilter()">Apply</button>
+  <button onclick="clearFilter()">Clear</button>
+</div>
 
 </div>
 
-<div class="results" id="results"></div>
+<div class="results container" id="results"></div>
 
 <script>
 
-let original = [];
+let controller;
+let originalResults = [];
 
 function highlight(text, q) {
     if (!q) return text;
@@ -95,21 +118,41 @@ function highlight(text, q) {
 
 async function search() {
 
+    // reset filters
+    document.getElementById("filterBox").style.display = "none";
+    document.getElementById("houseFilter").value = "";
+    document.getElementById("ageFilter").value = "";
+
     let surname = document.getElementById("surname").value;
     let firstname = document.getElementById("firstname").value;
 
-    let res = await fetch(`/search?surname=${surname}&firstname=${firstname}`);
+    document.getElementById("searchBtn").disabled = true;
+    document.getElementById("loader").style.display = "block";
+
+    controller = new AbortController();
+
+    let res = await fetch(`/search?surname=${encodeURIComponent(surname)}&firstname=${encodeURIComponent(firstname)}`, {
+        signal: controller.signal
+    });
+
     let data = await res.json();
 
-    original = data.results;
+    originalResults = data.results;
 
-    render(original);
+    document.getElementById("searchBtn").disabled = false;
+    document.getElementById("loader").style.display = "none";
+
+    render(originalResults);
+}
+
+function cancelSearch() {
+    if (controller) controller.abort();
 }
 
 function render(data) {
 
-    let div = document.getElementById("results");
-    div.innerHTML = "";
+    let resultsDiv = document.getElementById("results");
+    resultsDiv.innerHTML = "";
 
     data.forEach(r => {
 
@@ -117,13 +160,18 @@ function render(data) {
         name = highlight(name, document.getElementById("surname").value);
         name = highlight(name, document.getElementById("firstname").value);
 
-        div.innerHTML += `
-        <div class="card">
-          <b>${name}</b><br>
-          Relative: ${r.relative_name || ""}<br>
-          House: ${r.house_no} | Age: ${r.age}<br>
-          File: ${r.source_file}
-        </div>`;
+        let div = document.createElement("div");
+
+        div.innerHTML = `
+            <div class="result">
+                <b>${name}</b><br>
+                Relative: ${r.relative_name || ""}<br>
+                House: ${r.house_no} | Age: ${r.age}<br>
+                File: ${r.source_file}
+            </div>
+        `;
+
+        resultsDiv.appendChild(div);
     });
 }
 
@@ -133,10 +181,11 @@ function toggleFilter() {
 }
 
 function applyFilter() {
-    let house = document.getElementById("house").value;
-    let age = document.getElementById("age").value;
 
-    let filtered = original;
+    let house = document.getElementById("houseFilter").value;
+    let age = document.getElementById("ageFilter").value;
+
+    let filtered = originalResults;
 
     if (house) filtered = filtered.filter(r => r.house_no == house);
     if (age) filtered = filtered.filter(r => r.age == age);
@@ -145,11 +194,15 @@ function applyFilter() {
 }
 
 function clearFilter() {
-    document.getElementById("house").value = "";
-    document.getElementById("age").value = "";
-    render(original);
+    document.getElementById("houseFilter").value = "";
+    document.getElementById("ageFilter").value = "";
+    render(originalResults);
 }
 
+// ENTER support
+document.addEventListener("keydown", function(e) {
+    if (e.key === "Enter") search();
+});
 </script>
 
 </body>
