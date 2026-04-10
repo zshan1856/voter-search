@@ -28,6 +28,29 @@ def normalize(text):
 
 
 # -------------------------
+# PHONETIC KEY (CORE)
+# -------------------------
+def phonetic_key(word):
+    if not word:
+        return ""
+
+    w = word.lower()
+
+    # remove vowels (except first)
+    first = w[0]
+    rest = "".join([c for c in w[1:] if c not in "aeiou"])
+
+    # normalize common variations
+    rest = rest.replace("ph", "f")
+    rest = rest.replace("kh", "k")
+    rest = rest.replace("gh", "g")
+    rest = rest.replace("sh", "s")
+    rest = rest.replace("z", "j")
+
+    return first + rest
+
+
+# -------------------------
 # LOAD DATA
 # -------------------------
 DATA_URL = "https://drive.google.com/uc?export=download&id=1tfYsu-wHTUANOIT9pc_NYlQQiytlE01U"
@@ -36,16 +59,23 @@ DATABASE = []
 
 def load_data():
     global DATABASE
+
     res = requests.get(DATA_URL)
     data = res.json()
 
     for r in data:
         tokens = r.get("search_tokens", [])
-        r["normalized_tokens"] = [normalize(t) for t in tokens]
+
+        normalized = [normalize(t) for t in tokens]
+        phonetics = [phonetic_key(t) for t in normalized]
+
+        r["normalized_tokens"] = normalized
+        r["phonetic_tokens"] = phonetics
 
     DATABASE = data
 
 load_data()
+
 
 # -------------------------
 # SERVE UI
@@ -59,20 +89,35 @@ def home():
 
 
 # -------------------------
-# MATCH FUNCTION (SMART)
+# MATCH FUNCTION (ADVANCED)
 # -------------------------
-def score_token(query, token):
-    if query == token:
-        return 5
-    if token.startswith(query):
-        return 4
-    if fuzz.ratio(query, token) > 90:
-        return 3
-    if fuzz.ratio(query, token) > 80:
-        return 2
-    if query in token:
-        return 1
-    return 0
+def score_token(query, tokens, phonetic_tokens):
+    best = 0
+    q_ph = phonetic_key(query)
+
+    for i, t in enumerate(tokens):
+
+        # exact
+        if query == t:
+            return 6
+
+        # prefix
+        if t.startswith(query):
+            best = max(best, 5)
+
+        # phonetic
+        if q_ph == phonetic_tokens[i]:
+            best = max(best, 4)
+
+        # fuzzy
+        if fuzz.ratio(query, t) > 85:
+            best = max(best, 3)
+
+        # substring
+        if query in t:
+            best = max(best, 2)
+
+    return best
 
 
 # -------------------------
@@ -91,38 +136,38 @@ def search_api(surname: str = "", firstname: str = ""):
 
     for r in DATABASE:
 
-        tokens = r.get("normalized_tokens", [])
-
-        if not tokens:
-            continue
+        tokens = r["normalized_tokens"]
+        phonetics = r["phonetic_tokens"]
 
         s_score = 0
         f_score = 0
 
         # surname = first token
         if surname:
-            s_score = score_token(surname, tokens[0])
+            s_score = score_token(surname, [tokens[0]], [phonetics[0]])
 
-        # firstname = rest tokens
+        # firstname = rest
         if firstname:
-            for t in tokens[1:]:
-                f_score = max(f_score, score_token(firstname, t))
+            f_score = score_token(firstname, tokens[1:], phonetics[1:])
 
         # filtering logic
         if surname and not firstname:
             if s_score == 0:
                 continue
+
         elif firstname and not surname:
             if f_score == 0:
                 continue
+
         else:
             if s_score == 0 and f_score == 0:
                 continue
 
         score = s_score + f_score
 
+        # boost if both match
         if s_score > 0 and f_score > 0:
-            score += 5  # boost
+            score += 5
 
         results.append((score, r))
 
