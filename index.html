@@ -3,6 +3,8 @@
 <head>
   <title>Voter Search</title>
 
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont;
@@ -14,83 +16,114 @@
       position: sticky;
       top: 0;
       background: white;
-      padding: 15px;
+      padding: 12px;
       border-bottom: 1px solid #eee;
       z-index: 10;
     }
 
-    input {
-      width: 100%;
-      padding: 10px;
-      margin: 5px 0;
-      border-radius: 8px;
-      border: 1px solid #ddd;
-    }
-
-    button {
-      padding: 10px;
-      margin-top: 5px;
-      cursor: pointer;
-      border-radius: 8px;
-      border: none;
-    }
-
-    .search-btn { background: black; color: white; }
-    .cancel-btn { background: red; color: white; }
-    .filter-btn { background: #1976d2; color: white; }
-
     .container {
       max-width: 700px;
       margin: auto;
+      padding: 0 10px;
     }
 
+    input {
+      width: 100%;
+      padding: 12px;
+      margin: 6px 0;
+      border-radius: 10px;
+      border: 1px solid #ddd;
+      font-size: 16px;
+    }
+
+    button {
+      padding: 12px;
+      margin-top: 6px;
+      cursor: pointer;
+      border-radius: 10px;
+      border: none;
+      font-size: 14px;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .search-btn { background: black; color: white; flex: 1; }
+    .cancel-btn { background: red; color: white; flex: 1; }
+    .filter-btn { background: #1976d2; color: white; width: 100%; }
+
     .results {
-      height: calc(100vh - 200px);
+      height: calc(100vh - 220px);
       overflow-y: auto;
       padding: 10px;
     }
 
     .result {
       background: white;
-      padding: 12px;
-      border-radius: 10px;
+      padding: 14px;
+      border-radius: 12px;
       margin-bottom: 10px;
       border: 1px solid #eee;
+      line-height: 1.5;
     }
 
     .highlight {
       background: #ffe082;
     }
 
-    #loader { display:none; }
+    #loader {
+      display:none;
+      font-size: 14px;
+      color: #555;
+    }
 
     .filter-box {
       display:none;
       margin-top:10px;
       padding:10px;
       background:#fafafa;
-      border-radius:8px;
+      border-radius:10px;
       border:1px solid #ddd;
+    }
+
+    /* 📱 Mobile improvements */
+    @media (max-width: 600px) {
+      .results {
+        height: calc(100vh - 260px);
+      }
+
+      h2 {
+        font-size: 18px;
+      }
     }
   </style>
 </head>
 
 <body>
 
-<div class="header container">
+<div class="header">
+<div class="container">
 
 <h2>Kausa Mumbra 2002 Voter Search</h2>
 
 <a href="https://drive.google.com/uc?export=download&id=1qwCIJ4ERVkUSm_k0-4hk-92eHRWSV5Tg" target="_blank">
-  <button>Download Full Voter List (PDF)</button>
+  <button style="width:100%">Download Full Voter List (PDF)</button>
 </a>
 
 <input id="surname" placeholder="Surname">
 <input id="firstname" placeholder="First Name">
 
-<button class="search-btn" id="searchBtn" onclick="search()">Search</button>
-<button class="cancel-btn" onclick="cancelSearch()">Cancel</button>
-<button class="filter-btn" id="filterBtn" onclick="toggleFilter()" style="display:none;">Filters</button>
+<div class="btn-row">
+  <button class="search-btn" id="searchBtn" onclick="search()">Search</button>
+  <button class="cancel-btn" onclick="cancelSearch()">Cancel</button>
+</div>
+
+<button class="filter-btn" id="filterBtn" onclick="toggleFilter()" style="display:none;">
+  Filters
+</button>
 
 <p id="status"></p>
 <p id="loader">🔍 Searching...</p>
@@ -98,10 +131,13 @@
 <div class="filter-box" id="filterBox">
   <input id="houseFilter" placeholder="House No">
   <input id="ageFilter" placeholder="Age">
-  <button onclick="applyFilter()">Apply</button>
-  <button onclick="clearFilter()">Clear</button>
+  <div class="btn-row">
+    <button onclick="applyFilter()">Apply</button>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
 </div>
 
+</div>
 </div>
 
 <div class="results container" id="results"></div>
@@ -111,19 +147,16 @@
 let controller;
 let originalResults = [];
 
-// ✅ escape regex safely
+// safe highlight
 function escapeRegex(text) {
     return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// ✅ fixed highlight
 function highlight(text, q) {
     if (!q) return text;
-
     try {
-        let safe = escapeRegex(q.trim());
-        let regex = new RegExp(safe, "gi");
-        return text.replace(regex, match => `<span class="highlight">${match}</span>`);
+        let regex = new RegExp(escapeRegex(q), "gi");
+        return text.replace(regex, m => `<span class="highlight">${m}</span>`);
     } catch {
         return text;
     }
@@ -131,7 +164,7 @@ function highlight(text, q) {
 
 async function search() {
 
-    // RESET UI STATE
+    // reset
     document.getElementById("filterBox").style.display = "none";
     document.getElementById("filterBtn").style.display = "none";
     document.getElementById("houseFilter").value = "";
@@ -155,18 +188,16 @@ async function search() {
 
         originalResults = data.results || [];
 
-        // ✅ RESULT COUNT
         document.getElementById("status").innerText = `Found ${originalResults.length} results`;
 
-        // ✅ SHOW FILTER ONLY IF RESULTS
         if (originalResults.length > 0) {
-            document.getElementById("filterBtn").style.display = "inline-block";
+            document.getElementById("filterBtn").style.display = "block";
         }
 
         render(originalResults);
 
     } catch (e) {
-        console.log("Search cancelled or failed");
+        console.log("Search cancelled");
     }
 
     document.getElementById("searchBtn").disabled = false;
@@ -189,9 +220,12 @@ function render(data) {
 
         let name = r.name || "";
 
-        // ✅ APPLY BOTH HIGHLIGHTS
         name = highlight(name, surname);
         name = highlight(name, firstname);
+
+        // ✅ page extraction
+        let file = r.source_file || "";
+        let page = file.replace(".jpg", "");
 
         let div = document.createElement("div");
 
@@ -200,7 +234,7 @@ function render(data) {
                 <b>${name}</b><br>
                 Relative: ${r.relative_name || ""}<br>
                 House: ${r.house_no} | Age: ${r.age}<br>
-                File: ${r.source_file}
+                File: ${file} | Page: ${page}
             </div>
         `;
 
@@ -209,12 +243,8 @@ function render(data) {
 }
 
 function toggleFilter() {
-
-    // ❗ only allow if results exist
     if (originalResults.length === 0) return;
-
     let box = document.getElementById("filterBox");
-
     box.style.display = box.style.display === "none" ? "block" : "none";
 }
 
@@ -228,7 +258,6 @@ function applyFilter() {
     if (house) filtered = filtered.filter(r => r.house_no == house);
     if (age) filtered = filtered.filter(r => r.age == age);
 
-    // ✅ UPDATE COUNT
     document.getElementById("status").innerText = `Filtered: ${filtered.length} results`;
 
     render(filtered);
@@ -237,13 +266,10 @@ function applyFilter() {
 function clearFilter() {
     document.getElementById("houseFilter").value = "";
     document.getElementById("ageFilter").value = "";
-
     document.getElementById("status").innerText = `Found ${originalResults.length} results`;
-
     render(originalResults);
 }
 
-// ENTER support
 document.addEventListener("keydown", function(e) {
     if (e.key === "Enter") search();
 });
