@@ -7,37 +7,66 @@ from indic_transliteration import sanscript
 from indic_transliteration.sanscript import transliterate
 
 # -------------------------
-# INIT APP (ALWAYS FIRST)
+# INIT
 # -------------------------
 app = FastAPI()
 
 # -------------------------
-# LOAD DATA (ONCE ONLY)
+# LOAD DATA
 # -------------------------
 DATA_URL = "https://drive.google.com/uc?export=download&id=1tfYsu-wHTUANOIT9pc_NYlQQiytlE01U"
 
 DATABASE = []
 
-def load_data():
+def normalize(text):
+    if not text:
+        return ""
+
+    text = text.strip().lower()
+
+    try:
+        text = transliterate(text, sanscript.DEVANAGARI, sanscript.ITRANS)
+    except:
+        pass
+
+    # phonetic normalization
+    text = text.replace("aa", "a").replace("ee", "i").replace("oo", "u")
+
+    return text
+
+
+def prepare_database():
     global DATABASE
+
     try:
         res = requests.get(DATA_URL, timeout=20)
+        data = res.json()
 
-        if res.status_code == 200:
-            DATABASE = res.json()
-            print(f"✅ Loaded {len(DATABASE)} records")
-        else:
-            print("❌ Failed to fetch data:", res.status_code)
+        print(f"✅ Raw records: {len(data)}")
+
+        # 🔥 Normalize tokens ONCE
+        for r in data:
+            tokens = r.get("search_tokens", [])
+
+            normalized_tokens = []
+            for t in tokens:
+                normalized_tokens.append(normalize(t))
+
+            r["normalized_tokens"] = normalized_tokens
+
+        DATABASE = data
+
+        print("✅ Tokens normalized")
 
     except Exception as e:
-        print("❌ Error loading data:", e)
+        print("❌ ERROR:", e)
 
-# Load once at startup
-load_data()
+
+prepare_database()
 
 
 # -------------------------
-# SERVE FRONTEND
+# FRONTEND
 # -------------------------
 app.mount("/static", StaticFiles(directory="."), name="static")
 
@@ -48,46 +77,19 @@ def home():
 
 
 # -------------------------
-# NORMALIZE QUERY ONLY
+# MATCH FUNCTION
 # -------------------------
-def normalize(text):
-    if not text:
-        return ""
-
-    text = text.strip().lower()
-
-    # Marathi → English
-    try:
-        text = transliterate(text, sanscript.DEVANAGARI, sanscript.ITRANS)
-    except:
-        pass
-
-    # Basic phonetic cleanup
-    text = text.replace("aa", "a")
-    text = text.replace("ee", "i")
-    text = text.replace("oo", "u")
-
-    return text
-
-
-# -------------------------
-# MATCHING FUNCTION
-# -------------------------
-def get_match_score(query, tokens):
+def match_score(query, tokens):
     best = 0
 
     for t in tokens:
-        t = t.lower()
 
-        # exact
         if query == t:
             return 3
 
-        # partial
         if query in t:
             best = max(best, 2)
 
-        # fuzzy
         elif fuzz.ratio(query, t) > 80:
             best = max(best, 1)
 
@@ -95,7 +97,7 @@ def get_match_score(query, tokens):
 
 
 # -------------------------
-# SEARCH API (2-STAGE)
+# SEARCH API (STRICT DESIGN)
 # -------------------------
 @app.get("/search")
 def search_api(
@@ -104,69 +106,59 @@ def search_api(
     house_no: str = "",
     age: str = ""
 ):
-    results = []
-
     surname = normalize(surname)
     firstname = normalize(firstname)
-    house_no = house_no.strip()
-    age = age.strip()
 
-    # ❗ No name input → no results
-    if not (surname or firstname):
+    # ❗ No input → no results
+    if not surname and not firstname:
         return {"results": []}
 
-    for record in DATABASE:
+    matched = []
 
-        tokens = record.get("search_tokens", [])  # DO NOT normalize again
+    # -------------------------
+    # STAGE 1: SEARCH
+    # -------------------------
+    for r in DATABASE:
+        tokens = r["normalized_tokens"]
 
-        surname_score = 0
-        firstname_score = 0
+        s_score = match_score(surname, tokens) if surname else 0
+        f_score = match_score(firstname, tokens) if firstname else 0
 
-        # -------------------------
-        # STAGE 1: SEARCH
-        # -------------------------
-        if surname:
-            surname_score = get_match_score(surname, tokens)
-
-        if firstname:
-            firstname_score = get_match_score(firstname, tokens)
-
-        # Matching logic
-        if surname and firstname:
-            if surname_score == 0 and firstname_score == 0:
-                continue
-        elif surname:
-            if surname_score == 0:
-                continue
-        elif firstname:
-            if firstname_score == 0:
+        # RULES
+        if surname and not firstname:
+            if s_score == 0:
                 continue
 
-        # -------------------------
-        # SCORING
-        # -------------------------
-        score = surname_score + firstname_score
+        elif firstname and not surname:
+            if f_score == 0:
+                continue
+
+        elif surname and firstname:
+            if s_score == 0 and f_score == 0:
+                continue
+
+        score = s_score + f_score
 
         # boost if both match
-        if surname_score > 0 and firstname_score > 0:
+        if s_score > 0 and f_score > 0:
             score += 5
 
-        # -------------------------
-        # STAGE 2: FILTER
-        # -------------------------
-        if house_no:
-            if record.get("house_no") != house_no:
-                continue
-
-        if age:
-            if str(record.get("age")) != age:
-                continue
-
-        results.append((score, record))
+        matched.append((score, r))
 
     # -------------------------
-    # SORT RESULTS
+    # SORT AFTER SEARCH
     # -------------------------
-    results.sort(key=lambda x: x[0], reverse=True)
+    matched.sort(key=lambda x: x[0], reverse=True)
 
-    return {"results": [r[1] for r in results]}
+    results = [m[1] for m in matched]
+
+    # -------------------------
+    # STAGE 2: FILTER (OPTIONAL)
+    # -------------------------
+    if house_no:
+        results = [r for r in results if r.get("house_no") == house_no]
+
+    if age:
+        results = [r for r in results if str(r.get("age")) == age]
+
+    return {"results": results}
