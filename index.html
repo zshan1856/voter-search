@@ -4,59 +4,21 @@
   <title>Voter Search</title>
 
   <style>
-    body {
-      font-family: Arial;
-      max-width: 700px;
-      margin: auto;
-      padding: 20px;
-      background: #fafafa;
-    }
+    body { font-family: Arial; max-width: 700px; margin: auto; padding: 20px; }
 
-    input {
-      width: 100%;
-      padding: 10px;
-      margin: 6px 0;
-      border-radius: 6px;
-      border: 1px solid #ddd;
-    }
+    input { width: 100%; padding: 10px; margin: 5px 0; }
 
-    button {
-      padding: 10px;
-      border-radius: 6px;
-      border: none;
-      cursor: pointer;
-    }
+    button { padding: 10px; margin-top: 5px; cursor: pointer; }
 
     .search-btn { background: black; color: white; }
-
+    .cancel-btn { background: red; color: white; }
     .filter-btn { background: #1976d2; color: white; }
 
-    .clear-btn { background: #e53935; color: white; }
+    .result { border-bottom: 1px solid #ccc; padding: 10px 0; }
 
-    .result {
-      background: white;
-      padding: 12px;
-      margin-top: 10px;
-      border-radius: 8px;
-      border: 1px solid #eee;
-    }
+    .highlight { background: yellow; }
 
-    .highlight-name { background: yellow; }
-    .highlight-filter { background: #80deea; }
-
-    .filter-box {
-      display: none;
-      margin-top: 10px;
-      padding: 10px;
-      background: white;
-      border-radius: 8px;
-      border: 1px solid #ddd;
-    }
-
-    .active-filter {
-      margin-top: 5px;
-      color: green;
-    }
+    #loader { display:none; }
   </style>
 </head>
 
@@ -64,116 +26,82 @@
 
 <h2>Kausa Mumbra 2002 Voter Search</h2>
 
+<a href="https://drive.google.com/uc?export=download&id=1qwCIJ4ERVkUSm_k0-4hk-92eHRWSV5Tg" target="_blank">
+  <button>Download Full Voter List (PDF)</button>
+</a>
+
 <input id="surname" placeholder="Surname">
 <input id="firstname" placeholder="First Name">
 
-<button class="search-btn" onclick="search()">Search</button>
+<button class="search-btn" id="searchBtn" onclick="search()">Search</button>
+<button class="cancel-btn" onclick="cancelSearch()">Cancel</button>
 
 <p id="status"></p>
-
-<button id="filterBtn" class="filter-btn" style="display:none;" onclick="toggleFilter()">Filters</button>
-
-<div id="filterBox" class="filter-box">
-  <input id="houseFilter" placeholder="House No">
-  <input id="ageFilter" placeholder="Age">
-
-  <button onclick="applyFilter()">Apply Filter</button>
-  <button class="clear-btn" onclick="clearFilter()">Clear Filter</button>
-
-  <div id="activeFilters" class="active-filter"></div>
-</div>
+<p id="loader">🔍 Searching...</p>
 
 <div id="results"></div>
 
 <script>
-let originalResults = [];
+let controller;
 
-function highlight(text, query) {
-    if (!query) return text;
-    let regex = new RegExp(`(${query})`, "gi");
-    return text.replace(regex, '<span class="highlight-name">$1</span>');
+function highlight(text, q) {
+    if (!q) return text;
+    return text.replace(new RegExp(q, "gi"), m => `<span class="highlight">${m}</span>`);
 }
 
 async function search() {
 
-    // reset filter UI
-    document.getElementById("filterBox").style.display = "none";
-    document.getElementById("activeFilters").innerText = "";
+    let surname = document.getElementById("surname").value;
+    let firstname = document.getElementById("firstname").value;
 
-    let surname = document.getElementById("surname").value.trim();
-    let firstname = document.getElementById("firstname").value.trim();
+    document.getElementById("searchBtn").disabled = true;
+    document.getElementById("loader").style.display = "block";
 
-    let res = await fetch(`/search?surname=${encodeURIComponent(surname)}&firstname=${encodeURIComponent(firstname)}`);
+    controller = new AbortController();
+
+    let res = await fetch(`/search?surname=${encodeURIComponent(surname)}&firstname=${encodeURIComponent(firstname)}`, {
+        signal: controller.signal
+    });
+
     let data = await res.json();
 
-    originalResults = data.results;
+    document.getElementById("searchBtn").disabled = false;
+    document.getElementById("loader").style.display = "none";
 
-    document.getElementById("filterBtn").style.display = "block";
+    render(data.results);
+}
 
-    render(originalResults);
+function cancelSearch() {
+    if (controller) controller.abort();
 }
 
 function render(data) {
 
     let resultsDiv = document.getElementById("results");
-    let status = document.getElementById("status");
-
-    status.innerText = `Found ${data.length} results`;
-
     resultsDiv.innerHTML = "";
 
     data.forEach(r => {
+        let div = document.createElement("div");
 
         let name = r.name;
 
-        name = highlight(name, document.getElementById("surname").value);
-        name = highlight(name, document.getElementById("firstname").value);
-
-        let div = document.createElement("div");
-        div.className = "result";
-
         div.innerHTML = `
-            <b>${name}</b><br>
-            Relative: ${r.relative_name || "N/A"}<br>
-            House: ${r.house_no} | Age: ${r.age}
+            <div class="result">
+                <b>${name}</b><br>
+                Relative: ${r.relative_name || ""}<br>
+                House: ${r.house_no} | Age: ${r.age}<br>
+                File: ${r.source_file}
+            </div>
         `;
 
         resultsDiv.appendChild(div);
     });
 }
 
-function toggleFilter() {
-    let box = document.getElementById("filterBox");
-    box.style.display = box.style.display === "none" ? "block" : "none";
-}
-
-function applyFilter() {
-
-    let house = document.getElementById("houseFilter").value;
-    let age = document.getElementById("ageFilter").value;
-
-    let filtered = originalResults;
-
-    if (house) {
-        filtered = filtered.filter(r => r.house_no === house);
-    }
-
-    if (age) {
-        filtered = filtered.filter(r => String(r.age) === age);
-    }
-
-    document.getElementById("activeFilters").innerText =
-        `Filters: ${house ? "House=" + house : ""} ${age ? " Age=" + age : ""}`;
-
-    render(filtered);
-}
-
-function clearFilter() {
-    document.getElementById("houseFilter").value = "";
-    document.getElementById("ageFilter").value = "";
-    document.getElementById("activeFilters").innerText = "";
-    render(originalResults);
-}
+// ENTER key support
+document.addEventListener("keydown", function(e) {
+    if (e.key === "Enter") search();
+});
 </script>
 
 </body>
