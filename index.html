@@ -89,7 +89,24 @@
       border:1px solid #ddd;
     }
 
-    /* 📱 Mobile improvements */
+    /* 🔥 FOOTNOTE TAG */
+    .footer-tag {
+      position: fixed;
+      bottom: 8px;
+      left: 10px;
+      font-size: 10px;
+      font-style: italic;
+      color: #5a0f0f; /* dark maroon */
+      opacity: 0.6;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+    }
+
+    .footer-hidden {
+      opacity: 0;
+    }
+
+    /* 📱 Mobile */
     @media (max-width: 600px) {
       .results {
         height: calc(100vh - 260px);
@@ -142,12 +159,18 @@
 
 <div class="results container" id="results"></div>
 
+<!-- 🔥 FOOTNOTE -->
+<div class="footer-tag" id="footerTag">
+  Developed by Zeeshan Hasan
+</div>
+
 <script>
 
 let controller;
 let originalResults = [];
+let scrollTimeout;
 
-// safe highlight
+// highlight helpers
 function escapeRegex(text) {
     return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -164,7 +187,6 @@ function highlight(text, q) {
 
 async function search() {
 
-    // reset
     document.getElementById("filterBox").style.display = "none";
     document.getElementById("filterBtn").style.display = "none";
     document.getElementById("houseFilter").value = "";
@@ -223,7 +245,6 @@ function render(data) {
         name = highlight(name, surname);
         name = highlight(name, firstname);
 
-        // ✅ page extraction
         let file = r.source_file || "";
         let page = file.replace(".jpg", "");
 
@@ -270,8 +291,20 @@ function clearFilter() {
     render(originalResults);
 }
 
+// ENTER support
 document.addEventListener("keydown", function(e) {
     if (e.key === "Enter") search();
+});
+
+// 🔥 Hide footer on scroll
+window.addEventListener("scroll", function() {
+    let tag = document.getElementById("footerTag");
+    tag.classList.add("footer-hidden");
+
+    clearTimeout(scrollTimeout);
+    scrollTimeout = setTimeout(() => {
+        tag.classList.remove("footer-hidden");
+    }, 800);
 });
 </script>
 
