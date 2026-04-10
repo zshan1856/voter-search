@@ -8,7 +8,7 @@ from indic_transliteration.sanscript import transliterate
 app = FastAPI()
 
 # -------------------------
-# NORMALIZE (ONLY THIS)
+# NORMALIZE
 # -------------------------
 def normalize(text):
     if not text:
@@ -21,10 +21,17 @@ def normalize(text):
     except:
         pass
 
-    # light normalization only
     text = text.replace("aa", "a").replace("ee", "i").replace("oo", "u")
 
     return text
+
+
+def close_match(q, t):
+    return (
+        t == q or
+        t.startswith(q) or
+        q.startswith(t)
+    )
 
 
 # -------------------------
@@ -42,8 +49,6 @@ def load_data():
 
     for r in data:
         tokens = r.get("search_tokens", [])
-
-        # normalize tokens once
         r["tokens"] = [normalize(t) for t in tokens]
 
     DATABASE = data
@@ -63,7 +68,7 @@ def home():
 
 
 # -------------------------
-# SEARCH (STRICT)
+# SEARCH
 # -------------------------
 @app.get("/search")
 def search_api(surname: str = "", firstname: str = ""):
@@ -74,7 +79,8 @@ def search_api(surname: str = "", firstname: str = ""):
     if not surname and not firstname:
         return {"results": []}
 
-    results = []
+    strong = []
+    partial = []
 
     for r in DATABASE:
 
@@ -83,38 +89,33 @@ def search_api(surname: str = "", firstname: str = ""):
         s_match = False
         f_match = False
 
-        # -------------------------
-        # SURNAME (first token)
-        # -------------------------
-        if surname:
-            if tokens and (
-                tokens[0] == surname or
-                tokens[0].startswith(surname)
-            ):
+        # SURNAME
+        if surname and tokens:
+            if close_match(surname, tokens[0]):
                 s_match = True
 
-        # -------------------------
-        # FIRST NAME (rest tokens)
-        # -------------------------
+        # FIRST NAME
         if firstname:
             for t in tokens[1:]:
-                if t == firstname or t.startswith(firstname):
+                if close_match(firstname, t):
                     f_match = True
                     break
 
         # -------------------------
-        # FINAL LOGIC
+        # LOGIC
         # -------------------------
         if surname and not firstname:
             if s_match:
-                results.append(r)
+                strong.append(r)
 
         elif firstname and not surname:
             if f_match:
-                results.append(r)
+                strong.append(r)
 
         else:
             if s_match and f_match:
-                results.append(r)
+                strong.append(r)   # best
+            elif s_match or f_match:
+                partial.append(r)  # fallback
 
-    return {"results": results}
+    return {"results": strong + partial}
