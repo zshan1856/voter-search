@@ -22,8 +22,6 @@ def normalize(text):
     except:
         pass
 
-    text = text.replace("aa", "a").replace("ee", "i").replace("oo", "u")
-
     return text
 
 
@@ -47,10 +45,11 @@ def load_data():
     for r in data:
         tokens = r.get("search_tokens", [])
 
-        norm_tokens = [normalize(t) for t in tokens]
+        norm = [normalize(t) for t in tokens]
+        nv = [remove_vowels(t) for t in norm]
 
-        r["tokens"] = norm_tokens
-        r["tokens_nv"] = [remove_vowels(t) for t in norm_tokens]
+        r["tokens"] = norm
+        r["tokens_nv"] = nv
 
     DATABASE = data
 
@@ -69,7 +68,31 @@ def home():
 
 
 # -------------------------
-# SEARCH
+# MATCH FUNCTION (STRICT)
+# -------------------------
+def match_token(query, query_nv, token, token_nv):
+    
+    # exact
+    if query == token:
+        return 3
+
+    # startswith
+    if token.startswith(query):
+        return 2
+
+    # vowel-less match (important for anjum)
+    if query_nv == token_nv:
+        return 2
+
+    # strong fuzzy only
+    if fuzz.ratio(query, token) > 92:
+        return 1
+
+    return 0
+
+
+# -------------------------
+# SEARCH API
 # -------------------------
 @app.get("/search")
 def search_api(surname: str = "", firstname: str = ""):
@@ -91,49 +114,57 @@ def search_api(surname: str = "", firstname: str = ""):
         tokens = r["tokens"]
         tokens_nv = r["tokens_nv"]
 
-        s_match = False
-        f_match = False
+        if not tokens:
+            continue
+
+        s_score = 0
+        f_score = 0
 
         # -------------------------
-        # SURNAME (STRICT)
+        # SURNAME (ONLY TOKEN[0])
         # -------------------------
         if surname:
-            if surname == tokens[0]:
-                s_match = True
-            elif surname_nv == tokens_nv[0]:
-                s_match = True
-            elif fuzz.ratio(surname, tokens[0]) > 90:
-                s_match = True
+            s_score = match_token(
+                surname,
+                surname_nv,
+                tokens[0],
+                tokens_nv[0]
+            )
 
         # -------------------------
-        # FIRST NAME (STRICT)
+        # FIRSTNAME (TOKEN[1:])
         # -------------------------
         if firstname:
             for i in range(1, len(tokens)):
-                if firstname == tokens[i]:
-                    f_match = True
-                elif firstname_nv == tokens_nv[i]:
-                    f_match = True
-                elif fuzz.ratio(firstname, tokens[i]) > 90:
-                    f_match = True
+                score = match_token(
+                    firstname,
+                    firstname_nv,
+                    tokens[i],
+                    tokens_nv[i]
+                )
+                f_score = max(f_score, score)
 
         # -------------------------
-        # FILTER LOGIC
+        # DECISION LOGIC
         # -------------------------
         if surname and not firstname:
-            if not s_match:
-                continue
-            strong.append(r)
+            if s_score > 0:
+                strong.append((s_score, r))
 
         elif firstname and not surname:
-            if not f_match:
-                continue
-            strong.append(r)
+            if f_score > 0:
+                strong.append((f_score, r))
 
         else:
-            if s_match and f_match:
-                strong.append(r)
-            elif s_match or f_match:
-                medium.append(r)
+            if s_score > 0 and f_score > 0:
+                strong.append((s_score + f_score + 2, r))  # boost
+            elif s_score > 0 or f_score > 0:
+                medium.append((s_score + f_score, r))
 
-    return {"results": strong + medium}
+    # sort properly
+    strong.sort(key=lambda x: x[0], reverse=True)
+    medium.sort(key=lambda x: x[0], reverse=True)
+
+    results = [r[1] for r in strong + medium]
+
+    return {"results": results[:200]}
