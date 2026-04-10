@@ -4,45 +4,89 @@
   <title>Voter Search</title>
 
   <style>
-    body { font-family: Arial; max-width: 700px; margin: auto; padding: 20px; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont;
+      margin: 0;
+      background: #f5f5f5;
+    }
 
-    input { width: 100%; padding: 10px; margin: 5px 0; }
+    .header {
+      position: sticky;
+      top: 0;
+      background: white;
+      padding: 15px;
+      border-bottom: 1px solid #eee;
+      z-index: 10;
+    }
 
-    button { padding: 10px; margin-top: 5px; cursor: pointer; }
+    input {
+      width: 48%;
+      padding: 10px;
+      margin: 5px 1%;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+    }
+
+    .btn {
+      padding: 10px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+    }
 
     .search-btn { background: black; color: white; }
-    .cancel-btn { background: red; color: white; }
     .filter-btn { background: #1976d2; color: white; }
 
-    .result { border-bottom: 1px solid #ccc; padding: 10px 0; }
+    .results {
+      padding: 15px;
+      height: calc(100vh - 140px);
+      overflow-y: auto;
+    }
 
-    .highlight { background: yellow; }
+    .card {
+      background: white;
+      padding: 12px;
+      margin-bottom: 10px;
+      border-radius: 10px;
+    }
 
-    #loader { display:none; }
+    .highlight {
+      background: #ffe082;
+    }
+
+    .filter-box {
+      display: none;
+      margin-top: 10px;
+    }
   </style>
 </head>
 
 <body>
 
-<h2>Kausa Mumbra 2002 Voter Search</h2>
+<div class="header">
 
-<a href="https://drive.google.com/uc?export=download&id=1qwCIJ4ERVkUSm_k0-4hk-92eHRWSV5Tg" target="_blank">
-  <button>Download Full Voter List (PDF)</button>
-</a>
+  <h3>Kausa Mumbra 2002 Voter</h3>
 
-<input id="surname" placeholder="Surname">
-<input id="firstname" placeholder="First Name">
+  <input id="surname" placeholder="Surname">
+  <input id="firstname" placeholder="First Name">
 
-<button class="search-btn" id="searchBtn" onclick="search()">Search</button>
-<button class="cancel-btn" onclick="cancelSearch()">Cancel</button>
+  <button class="btn search-btn" onclick="search()">Search</button>
+  <button class="btn filter-btn" onclick="toggleFilter()">Filters</button>
 
-<p id="status"></p>
-<p id="loader">🔍 Searching...</p>
+  <div class="filter-box" id="filterBox">
+    <input id="house" placeholder="House No">
+    <input id="age" placeholder="Age">
+    <button onclick="applyFilter()">Apply</button>
+    <button onclick="clearFilter()">Clear</button>
+  </div>
 
-<div id="results"></div>
+</div>
+
+<div class="results" id="results"></div>
 
 <script>
-let controller;
+
+let original = [];
 
 function highlight(text, q) {
     if (!q) return text;
@@ -54,54 +98,58 @@ async function search() {
     let surname = document.getElementById("surname").value;
     let firstname = document.getElementById("firstname").value;
 
-    document.getElementById("searchBtn").disabled = true;
-    document.getElementById("loader").style.display = "block";
-
-    controller = new AbortController();
-
-    let res = await fetch(`/search?surname=${encodeURIComponent(surname)}&firstname=${encodeURIComponent(firstname)}`, {
-        signal: controller.signal
-    });
-
+    let res = await fetch(`/search?surname=${surname}&firstname=${firstname}`);
     let data = await res.json();
 
-    document.getElementById("searchBtn").disabled = false;
-    document.getElementById("loader").style.display = "none";
+    original = data.results;
 
-    render(data.results);
-}
-
-function cancelSearch() {
-    if (controller) controller.abort();
+    render(original);
 }
 
 function render(data) {
 
-    let resultsDiv = document.getElementById("results");
-    resultsDiv.innerHTML = "";
+    let div = document.getElementById("results");
+    div.innerHTML = "";
 
     data.forEach(r => {
-        let div = document.createElement("div");
 
         let name = r.name;
+        name = highlight(name, document.getElementById("surname").value);
+        name = highlight(name, document.getElementById("firstname").value);
 
-        div.innerHTML = `
-            <div class="result">
-                <b>${name}</b><br>
-                Relative: ${r.relative_name || ""}<br>
-                House: ${r.house_no} | Age: ${r.age}<br>
-                File: ${r.source_file}
-            </div>
-        `;
-
-        resultsDiv.appendChild(div);
+        div.innerHTML += `
+        <div class="card">
+          <b>${name}</b><br>
+          Relative: ${r.relative_name || ""}<br>
+          House: ${r.house_no} | Age: ${r.age}<br>
+          File: ${r.source_file}
+        </div>`;
     });
 }
 
-// ENTER key support
-document.addEventListener("keydown", function(e) {
-    if (e.key === "Enter") search();
-});
+function toggleFilter() {
+    let box = document.getElementById("filterBox");
+    box.style.display = box.style.display === "none" ? "block" : "none";
+}
+
+function applyFilter() {
+    let house = document.getElementById("house").value;
+    let age = document.getElementById("age").value;
+
+    let filtered = original;
+
+    if (house) filtered = filtered.filter(r => r.house_no == house);
+    if (age) filtered = filtered.filter(r => r.age == age);
+
+    render(filtered);
+}
+
+function clearFilter() {
+    document.getElementById("house").value = "";
+    document.getElementById("age").value = "";
+    render(original);
+}
+
 </script>
 
 </body>
