@@ -22,12 +22,9 @@ def normalize(text):
     except:
         pass
 
-    # phonetic normalization (IMPORTANT)
+    # normalize patterns
     text = text.replace("aa", "a").replace("ee", "i").replace("oo", "u")
     text = text.replace("kh", "k").replace("gh", "g").replace("sh", "s")
-
-    # fix anjum / anjum variation
-    text = text.replace("nj", "nj").replace("nz", "nj")
 
     return text
 
@@ -55,8 +52,8 @@ def load_data():
 
         norm_tokens = [normalize(t) for t in tokens]
 
-        r["search_blob"] = " ".join(norm_tokens)
-        r["phonetic_blob"] = phonetic(r["search_blob"])
+        r["blob"] = " ".join(norm_tokens)
+        r["phonetic_blob"] = phonetic(r["blob"])
 
     DATABASE = data
 
@@ -64,7 +61,7 @@ load_data()
 
 
 # -------------------------
-# SERVE UI
+# UI
 # -------------------------
 app.mount("/static", StaticFiles(directory="."), name="static")
 
@@ -75,7 +72,7 @@ def home():
 
 
 # -------------------------
-# SEARCH API
+# SEARCH
 # -------------------------
 @app.get("/search")
 def search_api(surname: str = "", firstname: str = ""):
@@ -89,30 +86,44 @@ def search_api(surname: str = "", firstname: str = ""):
     if not query:
         return {"results": []}
 
-    results = []
+    tier1 = []
+    tier2 = []
+    tier3 = []
 
     for r in DATABASE:
 
-        blob = r["search_blob"]
+        blob = r["blob"]
         blob_ph = r["phonetic_blob"]
 
-        score = 0
+        # -------------------------
+        # TIER 1 (STRONG)
+        # -------------------------
+        if query == blob or query in blob.split():
+            tier1.append(r)
+            continue
 
-        # exact
-        if query in blob:
-            score += 5
+        if query_ph == blob_ph or query_ph in blob_ph:
+            tier1.append(r)
+            continue
 
-        # phonetic match
-        if query_ph in blob_ph:
-            score += 4
+        # -------------------------
+        # TIER 2 (MEDIUM)
+        # -------------------------
+        if blob.startswith(query):
+            tier2.append(r)
+            continue
 
-        # fuzzy
-        if fuzz.partial_ratio(query, blob) > 85:
-            score += 3
+        if fuzz.partial_ratio(query, blob) > 90:
+            tier2.append(r)
+            continue
 
-        if score > 0:
-            results.append((score, r))
+        # -------------------------
+        # TIER 3 (WEAK)
+        # -------------------------
+        if fuzz.partial_ratio(query, blob) > 80:
+            tier3.append(r)
 
-    results.sort(key=lambda x: x[0], reverse=True)
+    # Combine results (priority order)
+    results = tier1 + tier2 + tier3
 
-    return {"results": [r[1] for r in results]}
+    return {"results": results[:200]}  # cap to avoid overload
