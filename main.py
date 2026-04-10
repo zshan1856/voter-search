@@ -22,15 +22,12 @@ def normalize(text):
     except:
         pass
 
-    # normalize patterns
     text = text.replace("aa", "a").replace("ee", "i").replace("oo", "u")
-    text = text.replace("kh", "k").replace("gh", "g").replace("sh", "s")
 
     return text
 
 
-def phonetic(text):
-    text = normalize(text)
+def remove_vowels(text):
     return "".join([c for c in text if c not in "aeiou"])
 
 
@@ -52,8 +49,8 @@ def load_data():
 
         norm_tokens = [normalize(t) for t in tokens]
 
-        r["blob"] = " ".join(norm_tokens)
-        r["phonetic_blob"] = phonetic(r["blob"])
+        r["tokens"] = norm_tokens
+        r["tokens_nv"] = [remove_vowels(t) for t in norm_tokens]
 
     DATABASE = data
 
@@ -80,50 +77,63 @@ def search_api(surname: str = "", firstname: str = ""):
     surname = normalize(surname)
     firstname = normalize(firstname)
 
-    query = (surname + " " + firstname).strip()
-    query_ph = phonetic(query)
+    surname_nv = remove_vowels(surname)
+    firstname_nv = remove_vowels(firstname)
 
-    if not query:
+    if not surname and not firstname:
         return {"results": []}
 
-    tier1 = []
-    tier2 = []
-    tier3 = []
+    strong = []
+    medium = []
 
     for r in DATABASE:
 
-        blob = r["blob"]
-        blob_ph = r["phonetic_blob"]
+        tokens = r["tokens"]
+        tokens_nv = r["tokens_nv"]
+
+        s_match = False
+        f_match = False
 
         # -------------------------
-        # TIER 1 (STRONG)
+        # SURNAME (STRICT)
         # -------------------------
-        if query == blob or query in blob.split():
-            tier1.append(r)
-            continue
-
-        if query_ph == blob_ph or query_ph in blob_ph:
-            tier1.append(r)
-            continue
-
-        # -------------------------
-        # TIER 2 (MEDIUM)
-        # -------------------------
-        if blob.startswith(query):
-            tier2.append(r)
-            continue
-
-        if fuzz.partial_ratio(query, blob) > 90:
-            tier2.append(r)
-            continue
+        if surname:
+            if surname == tokens[0]:
+                s_match = True
+            elif surname_nv == tokens_nv[0]:
+                s_match = True
+            elif fuzz.ratio(surname, tokens[0]) > 90:
+                s_match = True
 
         # -------------------------
-        # TIER 3 (WEAK)
+        # FIRST NAME (STRICT)
         # -------------------------
-        if fuzz.partial_ratio(query, blob) > 80:
-            tier3.append(r)
+        if firstname:
+            for i in range(1, len(tokens)):
+                if firstname == tokens[i]:
+                    f_match = True
+                elif firstname_nv == tokens_nv[i]:
+                    f_match = True
+                elif fuzz.ratio(firstname, tokens[i]) > 90:
+                    f_match = True
 
-    # Combine results (priority order)
-    results = tier1 + tier2 + tier3
+        # -------------------------
+        # FILTER LOGIC
+        # -------------------------
+        if surname and not firstname:
+            if not s_match:
+                continue
+            strong.append(r)
 
-    return {"results": results[:200]}  # cap to avoid overload
+        elif firstname and not surname:
+            if not f_match:
+                continue
+            strong.append(r)
+
+        else:
+            if s_match and f_match:
+                strong.append(r)
+            elif s_match or f_match:
+                medium.append(r)
+
+    return {"results": strong + medium}
